@@ -5,6 +5,7 @@ import config, text_ord, text_rand, re_pat_home, re_pat_ment
 # 認証の情報
 t = twitter.Twitter(auth=config.APIKEY)
 
+
 ###便利ツール###
 # 特定の文字列を置換
 def replace_ch(text, s_name=""):
@@ -33,10 +34,22 @@ def read_data():
         return_data = json.load(f)
     
     return return_data
-######
 
 
-###ツイート機能に必要な関数###
+###各種データ取得###
+# TL取得
+data_dict = read_data()
+last_home_twi_id = data_dict["rep_home_tl"]
+res_tl = t.statuses.home_timeline(count=200, since_id=last_home_twi_id)
+
+
+# mention取得
+data_dict = read_data()
+last_rep_twi_id = data_dict["rep_mention"]
+res_me = t.statuses.mentions_timeline(count=200, since_id=last_rep_twi_id)
+
+
+###ツイートに必要な関数###
 # テキストをランダムにツイートさせる
 def tweet_rand():
     # ツイート生成
@@ -55,7 +68,6 @@ def tweet_ord():
 
     # 最終行だったなら0に戻す
     if data_dict["tweet_order"] == (len(text_ord.tweet_data)):
-        print("最終行です。最初に戻ります")
         data_dict["tweet_order"] = 0
     else:
         pass
@@ -77,24 +89,16 @@ def tweet_ord():
 
 # リプライ返し
 def reply_mention():
-    # Mentionのデータリスト取得
-    res = t.statuses.mentions_timeline(count=50)
-
-    # どこまで読み込みしたか復元
-    data_dict = read_data()
-    last_rep_twi_id = data_dict["rep_mention"]
-
     # リスト初期化
     list_rep_make = []
 
     # リプライ対象のツイートか判別し、対象ならばリスト格納。対象外ならリストに入れない。
-    for m_num in res:
-        if m_num["id"] > last_rep_twi_id:
-            list_temp = []
-            list_temp.append(m_num["id"])
-            list_temp.append(m_num["user"]["screen_name"])
-            list_temp.append(repr(m_num["text"]))
-            list_rep_make.append(list_temp)
+    for m_num in res_me:
+        list_temp = []
+        list_temp.append(m_num["id"])
+        list_temp.append(m_num["user"]["screen_name"])
+        list_temp.append(repr(m_num["text"]))
+        list_rep_make.append(list_temp)
 
     # リプライ対象のツイートが1つ以上ならリプライ作成。0なら何もしない。
     if len(list_rep_make) > 0:
@@ -135,42 +139,32 @@ def reply_mention():
         pass
 
     #読み込んだ最新ツイートIDの記録
-    last_rep_twi_id = res[0]["id"]
+    last_rep_twi_id = res_me[0]["id"]
     data_dict["rep_mention"] = last_rep_twi_id
     write_data(data_dict)
 
 # TLに反応リプ
 def reply_home():
-    # TLのデータリスト取得
-    res = t.statuses.home_timeline(count=200)
-
-    # どこまで読み込みしたか復元
-    data_dict = read_data()
-    last_home_twi_id = data_dict["rep_home_tl"]
-
     # リスト初期化
     list_rep_make = []
 
     # リプライ対象のツイートか判別し、対象ならばリスト格納。対象外ならリストに入れない。
-    for m_num in res:
-        # 調べたIDの比較
-        if m_num["id"] > last_home_twi_id:
+    for m_num in res_tl:
+        # RTを除外
+        del_rt = re.search(r"RT @(.+)", repr(m_num["text"]))
+        if del_rt is None:
 
-            # RTを除外
-            del_rt = re.search(r"RT @(.+)", repr(m_num["text"]))
-            if del_rt is None:
-
-                # 自身のツイートを除外
-                if m_num["user"]["screen_name"] != config.MY_ID:
-                    list_temp = []
-                    list_temp.append(m_num["id"])
-                    list_temp.append(m_num["user"]["screen_name"])
-                    list_temp.append(repr(m_num["text"]))
-                    list_rep_make.append(list_temp)
-                else:
-                    pass
+            # 自身のツイートを除外
+            if m_num["user"]["screen_name"] != config.MY_ID:
+                list_temp = []
+                list_temp.append(m_num["id"])
+                list_temp.append(m_num["user"]["screen_name"])
+                list_temp.append(repr(m_num["text"]))
+                list_rep_make.append(list_temp)
             else:
                 pass
+        else:
+            pass
 
     # リプライ対象のツイートが1つ以上ならリプライ作成。0なら何もしない。
     if len(list_rep_make) > 0:
@@ -200,6 +194,6 @@ def reply_home():
                 pass
 
     #読み込んだ最新ツイートIDの記録
-    last_home_twi_id = res[0]["id"]
+    last_home_twi_id = res_tl[0]["id"]
     data_dict["rep_home_tl"] = last_home_twi_id
     write_data(data_dict)
