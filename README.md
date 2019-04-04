@@ -9,7 +9,7 @@ Twitterのbotを作ることができるもの。
 --------
 
 注意点
-  使用前にpipでtwiteerをインストールしておいてください。
+  使用前にpipでtwitterをインストールしておいてください。
   これ
   https://github.com/sixohsix/twitter
   
