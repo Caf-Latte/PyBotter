@@ -9,8 +9,8 @@ data_dict = {"tweet_order":0, "rep_mention":0, "rep_home_tl":0}
 t = twitter.Twitter(auth=config.APIKEY)
 
 # mentionの最新IDのデータ取得
-res_h = t.statuses.mentions_timeline(count=5)
-data_dict["rep_mention"] = res_h[0]["id"]
+res_m = t.statuses.mentions_timeline(count=5)
+data_dict["rep_mention"] = res_m[0]["id"]
 
 # TLの最新IDのデータ取得
 res_h = t.statuses.home_timeline(count=5)
