@@ -1,199 +1,214 @@
+import datetime
+import random
+import re
+import json
+import os
 import twitter
-import datetime, random, re, json, os
-import config, text_ord, text_rand, re_pat_home, re_pat_ment
+import config
+
 
 # 認証の情報
 t = twitter.Twitter(auth=config.APIKEY)
 
 
-###便利ツール###
+### 便利ツール ###
 # 特定の文字列を置換
-def replace_ch(text, s_name=""):
+def replace_string(text, screen_name=""):
     dt_now = datetime.datetime.now()
-    mont = dt_now.strftime("%m")
-    date = dt_now.strftime("%d")
+    month = dt_now.strftime("%m")
+    date = dt_now.strftime("%d") 
     hour = dt_now.strftime("%H")
-    minu = dt_now.strftime("%M")
+    minute = dt_now.strftime("%M")
 
-    re_text = text.replace("{screen_name}", s_name).replace("{month}", mont).replace("{date}", date).replace("{hour}", hour).replace("{minute}", minu)
+    replaced_text = text.replace("\\n","\n").replace("{screen_name}", screen_name).replace("{month}", month).replace("{date}", date).replace("{hour}", hour).replace("{minute}", minute)
 
-    return re_text
+    return replaced_text
 
-# データ書き込み用
-def write_data(w_data):
+# データ読み込み
+def read_data(data_name):
     data_path = os.path.join(os.path.dirname(__file__), "data.json")
 
-    with open(data_path, "w") as f:
-        json.dump(w_data, f)
-
-# データ読み込み用
-def read_data():
-    data_path = os.path.join(os.path.dirname(__file__), "data.json")
-
-    with open(data_path, "r") as f:
-        return_data = json.load(f)
+    with open(data_path, "r", encoding="utf-8") as f:
+        return_data = json.load(f)[str(data_name)]
     
     return return_data
 
+# データ書き込み
+def write_data(data_name, value):
+    data_path = os.path.join(os.path.dirname(__file__), "data.json")
 
-###各種データ取得###
-# TL取得
-data_dict = read_data()
-last_home_twi_id = data_dict["rep_home_tl"]
-res_tl = t.statuses.home_timeline(count=200, since_id=last_home_twi_id)
+    with open(data_path, "r", encoding="utf-8") as f:
+        writing_data = json.load(f)
+
+    writing_data[str(data_name)] = int(value)
+
+    with open(data_path, "w", encoding="utf-8") as f:
+        json.dump(writing_data, f)
 
 
-# mention取得
-data_dict = read_data()
-last_rep_twi_id = data_dict["rep_mention"]
-res_me = t.statuses.mentions_timeline(count=200, since_id=last_rep_twi_id)
+### データ取得と取得した最新TweetIDの記録 ###
+# Home_TL
+last_home_tweet_id = read_data("home_tl")
+get_home = t.statuses.home_timeline(count=200, since_id=last_home_tweet_id)
+if len(get_home) != 0:
+    write_data("home_tl", get_home[0]["id"])
+
+
+# Mention_TL
+last_mention_tweet_id = read_data("mention_tl")
+get_mention = t.statuses.mentions_timeline(count=200, since_id=last_mention_tweet_id)
+if len(get_mention) != 0:
+    write_data("mention_tl", get_mention[0]["id"])
 
 
 ###ツイートに必要な関数###
-# テキストをランダムにツイートさせる
-def tweet_rand():
+# テキストをランダムにツイートする
+def tweet_random(file_name):
+    # ファイルを展開
+    data_path = os.path.join(os.path.dirname(__file__), str(file_name))
+    with open(data_path, "r", encoding="utf-8") as f:
+        text_list = f.readlines()
+
     # ツイート生成
-    text = random.choice(text_rand.tweet_data)
-
+    text = random.choice(text_list)
     # 文字列置換
-    tweet = replace_ch(text)
+    tweet = replace_string(text)
+    # ツイート送信
+    t.statuses.update(status=str(tweet))
 
-    # ポスト
-    t.statuses.update(status=tweet)
 
-# テキストを順番にツイートさせる
-def tweet_ord():
+# テキストを順番にツイートする(デフォルトではループ)
+def tweet_order(file_name, mode="loop"):
+    # ファイル展開
+    data_path = os.path.join(os.path.dirname(__file__), str(file_name))
+    with open(data_path, "r", encoding="utf-8") as f:
+        text_list = f.readlines()
+
     # どこまでツイートしたか復元
-    data_dict = read_data()
+    ord_num = read_data(file_name)
 
-    # 最終行だったなら0に戻す
-    if data_dict["tweet_order"] == (len(text_ord.tweet_data)):
-        data_dict["tweet_order"] = 0
+    # ループモードかつ最終行なら最初に戻す
+    if (mode == "loop" and ord_num == len(text_list)):
+            ord_num = 0       
+    else:
+        pass
+    
+    # 一回のみのモードかつ最終行ならツイートしない
+    if (mode == "once" and ord_num == len(text_list)):
+        return 0
     else:
         pass
 
-    # 取り出すデータを選ぶ
-    text = text_ord.tweet_data[data_dict["tweet_order"]]
-
+    # ツイート生成
+    text = text_list[ord_num]
     # 文字列置換
-    tweet = replace_ch(text)
+    tweet = replace_string(text)
+    # ツイート
+    t.statuses.update(status=str(tweet))
 
-    # ポスト
-    t.statuses.update(status=tweet)
+    # どこまでツイートしたか記録
+    ord_num += 1
+    write_data(file_name, ord_num)
 
-    # 数値を1増やす。
-    data_dict["tweet_order"] += 1
 
-    # データに書き込み
-    write_data(data_dict)
+# リプライへの返信
+def reply_mention(file_name):
+    # リプライが1個以上なら返信パターン作成開始
+    if len(get_mention) != 0:
+            
+        # パターンファイル展開
+        data_path = os.path.join(os.path.dirname(__file__), str(file_name))
+        with open(data_path, "r", encoding="utf-8") as f:
+            reply_pattern = json.load(f)
 
-# リプライ返し
-def reply_mention():
-    # リスト初期化
-    list_rep_make = []
+        # パターンと照合
+        for i in get_mention:
+            for j in reply_pattern:
+                result = re.search(j, repr(re.escape(i["text"])))
 
-    # リプライ対象のツイートか判別し、対象ならばリスト格納。対象外ならリストに入れない。
-    for m_num in res_me:
-        list_temp = []
-        list_temp.append(m_num["id"])
-        list_temp.append(m_num["user"]["screen_name"])
-        list_temp.append(repr(m_num["text"]))
-        list_rep_make.append(list_temp)
-
-    # リプライ対象のツイートが1つ以上ならリプライ作成。0なら何もしない。
-    if len(list_rep_make) > 0:
-        # 一致検索
-        for rep in list_rep_make:
-            content = rep[2]
-
-            for rep_2 in re_pat_ment.re_pat_ment:
-                pattern = rep_2[0]
-                resulut = re.search(pattern, re.escape(content))
-
-                if resulut is None:      
+                # 合致するパターンを見つけるかパターンファイルの最後までループ
+                if result is None:
                     pass
+
                 else:
-                    # ツイート作成(パターン一致時)
-                    twi_id = rep[0]
-                    sc_nam = rep[1]
-                    text = ("@" + sc_nam + " " + random.choice(rep_2[1]))
-                    
-                    # 文字列置換
-                    tweet = replace_ch(text, sc_nam)
-                    
-                    # ポスト
-                    t.statuses.update(status=tweet,in_reply_to_status_id=twi_id)
-                    break
+                    # 一致した場合ツイート生成
+                    text = random.choice(reply_pattern[j])
+
+                    # リプライを返さないパターンの判別
+                    if text != config.END_PATTERN:
+                        # リプライに必要な情報収集
+                        tweet_id = i["id"]
+                        screen_name = i["user"]["screen_name"]
+
+                        # 文頭にScreen_Name付加および、文字列置換
+                        sc_text = ("@" + screen_name + " " + text)
+                        tweet = replace_string(sc_text, str(screen_name))
+
+                        # ポスト
+                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                        break
+                    else:
+                        # リプライに必要な情報収集
+                        break
             else:
-                # ツイート作成(全パターン不一致時)            
-                twi_id = rep[0]
-                sc_nam = rep[1]
-                text = ("@" + sc_nam + " " + random.choice(re_pat_ment.rep_rand_m))  
+                # 全パターン不一致時のツイート生成
+                    text = random.choice(reply_pattern["(?!.*)"])
 
-                # 文字列置換
-                tweet = replace_ch(text)
+                    # リプライを返さないパターンの判別
+                    if text != config.END_PATTERN:
+                        # リプライに必要な情報収集
+                        tweet_id = i["id"]
+                        screen_name = i["user"]["screen_name"]
 
-                # ポスト
-                t.statuses.update(status=tweet,in_reply_to_status_id=twi_id)
-    else:
-        pass
+                        # 文頭にScreen_Name付加および、文字列置換
+                        sc_text = ("@" + screen_name + " " + text)
+                        tweet = replace_string(sc_text, str(screen_name))
 
-    #読み込んだ最新ツイートIDの記録
-    last_rep_twi_id = res_me[0]["id"]
-    data_dict["rep_mention"] = last_rep_twi_id
-    write_data(data_dict)
+                        # ポスト
+                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                    else:
+                        pass
 
-# TLに反応リプ
-def reply_home():
-    # リスト初期化
-    list_rep_make = []
 
-    # リプライ対象のツイートか判別し、対象ならばリスト格納。対象外ならリストに入れない。
-    for m_num in res_tl:
-        # RTを除外
-        del_rt = re.search(r"RT @(.+)", repr(m_num["text"]))
-        if del_rt is None:
+# TLへの反応リプライ
+def reply_home(file_name):
+    # リプライが1個以上なら返信パターン作成開始
+    if len(get_home) != 0:
 
-            # 自身のツイートを除外
-            if m_num["user"]["screen_name"] != config.MY_ID:
-                list_temp = []
-                list_temp.append(m_num["id"])
-                list_temp.append(m_num["user"]["screen_name"])
-                list_temp.append(repr(m_num["text"]))
-                list_rep_make.append(list_temp)
+        # パターンファイル展開
+        data_path = os.path.join(os.path.dirname(__file__), str(file_name))
+        with open(data_path, "r", encoding="utf-8") as f:
+            reply_pattern = json.load(f)
+
+        # ツイートへの処理開始
+        for i in get_home:
+            # 自身のツイート及びRTを除外
+            if (i["user"]["screen_name"]).lower() == config.MY_ID.lower():
+                pass
+            
+            elif re.search(r"RT @(.+)", repr(i["text"])) is None:
+                # パターンと照合
+                for j in reply_pattern:
+                    result = re.search(j, repr(re.escape(i["text"])))
+
+                    # 合致するパターンを見つけるかパターンファイルの最後までループ
+                    if result is None:
+                        pass
+                    
+                    else:
+                        # 一致した場合ツイート生成
+                        text = random.choice(reply_pattern[j])
+                        # リプライに必要な情報収集
+                        tweet_id = i["id"]
+                        screen_name = i["user"]["screen_name"]
+
+                        # 文頭にScreen_Name付加および、文字列置換
+                        sc_text = ("@" + screen_name + " " + text)
+                        tweet = replace_string(sc_text, str(screen_name))
+
+                        # ポスト
+                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                        break
+
             else:
                 pass
-        else:
-            pass
-
-    # リプライ対象のツイートが1つ以上ならリプライ作成。0なら何もしない。
-    if len(list_rep_make) > 0:
-        # 一致検索
-        for rep in list_rep_make:
-            content = rep[2]
-
-            for rep_2 in re_pat_home.re_pat_home:
-                pattern = rep_2[0]
-                resulut = re.search(pattern, re.escape(content))
-
-                if resulut is None:      
-                    pass
-                else:
-                    # ツイート作成(パターン一致時)
-                    twi_id = rep[0]
-                    sc_nam = rep[1]
-                    text = ("@" + sc_nam + " " + random.choice(rep_2[1]))
-                    
-                    # 文字列置換
-                    tweet = replace_ch(text, sc_nam)
-                    
-                    # ポスト
-                    t.statuses.update(status=tweet,in_reply_to_status_id=twi_id)
-                    break
-            else:
-                pass
-
-    #読み込んだ最新ツイートIDの記録
-    last_home_twi_id = res_tl[0]["id"]
-    data_dict["rep_home_tl"] = last_home_twi_id
-    write_data(data_dict)
