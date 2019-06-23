@@ -14,5 +14,8 @@ APIKEY = twitter.OAuth(
     token_secret="XXXXXXXXXX"
 )
 
-# アカウントのスクリーンネーム(@以降、大文字小文字正確に)
-MY_ID = ("XXXXXXX")
+# アカウントのスクリーンネーム(@より後の英数字と_のみ)
+MY_ID = ("XXXXXXXXX")
+
+# 会話を終了させる(リプライを返さない)パターン
+END_PATTERN = ("{{END}}")
