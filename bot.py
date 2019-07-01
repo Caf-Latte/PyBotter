@@ -11,7 +11,7 @@ minu = dt_now.minute
 
 
 # ランダムでツイート
-#pybotter.tweet_random("rand_text.txt")
+#pybotter.tweet_random("rnd_text.txt")
 
 # テキストを順番にツイートさせる
 #pybotter.tweet_order("ord_text.txt", "loop")
