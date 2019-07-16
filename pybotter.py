@@ -20,7 +20,13 @@ def replace_string(text, screen_name=""):
     hour = dt_now.strftime("%H")
     minute = dt_now.strftime("%M")
 
-    replaced_text = text.replace("\\n","\n").replace("{screen_name}", screen_name).replace("{month}", month).replace("{date}", date).replace("{hour}", hour).replace("{minute}", minute)
+    replaced_text = (text\
+    .replace("\\n","\n")\
+    .replace("{screen_name}", screen_name)\
+    .replace("{month}", month)\
+    .replace("{date}", date)\
+    .replace("{hour}", hour)\
+    .replace("{minute}", minute))
 
     return replaced_text
 
@@ -45,44 +51,61 @@ def write_data(data_name, value):
     with open(data_path, "w", encoding="utf-8") as f:
         json.dump(writing_data, f)
 
+# パターンファイル読み込み
+def read_pattern(mode, pattern_file_name):
+    data_path = os.path.join(os.path.dirname(__file__), str(pattern_file_name))
 
-### データ取得と取得した最新TweetIDの記録 ###
-# Home_TL
-last_home_tweet_id = read_data("home_tl")
-get_home = t.statuses.home_timeline(count=200, since_id=last_home_tweet_id)
-if len(get_home) != 0:
-    write_data("home_tl", get_home[0]["id"])
+    if mode == "txt":
+        with open(data_path, "r", encoding="utf-8") as f:
+            pattern = f.readlines()
+    
+    elif mode == "json":
+        with open(data_path, "r", encoding="utf-8") as f:
+            pattern = json.load(f)   
+
+    else:
+        print("要モード指定")
+        os.exit()
+
+    return pattern
 
 
-# Mention_TL
-last_mention_tweet_id = read_data("mention_tl")
-get_mention = t.statuses.mentions_timeline(count=200, since_id=last_mention_tweet_id)
-if len(get_mention) != 0:
-    write_data("mention_tl", get_mention[0]["id"])
+### データ取得・記録 ###
+def fetch_timelines():
+    global home_tl
+    home_tl = t.statuses.home_timeline(count=200)
+
+    global mention_tl
+    mention_tl = t.statuses.mentions_timeline(count=200)
+
+def write_last_ids():
+    if len(home_tl) != 0:
+        write_data("home_tl", home_tl[0]["id"])
+
+    if len(mention_tl) != 0:
+        write_data("mention_tl", mention_tl[0]["id"])
 
 
 ###ツイートに必要な関数###
 # テキストをランダムにツイートする
 def tweet_random(file_name):
-    # ファイルを展開
-    data_path = os.path.join(os.path.dirname(__file__), str(file_name))
-    with open(data_path, "r", encoding="utf-8") as f:
-        text_list = f.readlines()
+    # パターン読み込み
+    text_list = read_pattern(mode="txt", pattern_file_name=file_name)
 
     # ツイート生成
     text = random.choice(text_list)
+
     # 文字列置換
     tweet = replace_string(text)
+
     # ツイート送信
     t.statuses.update(status=str(tweet))
 
 
 # テキストを順番にツイートする(デフォルトではループ)
 def tweet_order(file_name, mode="loop"):
-    # ファイル展開
-    data_path = os.path.join(os.path.dirname(__file__), str(file_name))
-    with open(data_path, "r", encoding="utf-8") as f:
-        text_list = f.readlines()
+    # パターン読み込み
+    text_list = read_pattern(mode="txt", pattern_file_name=file_name)
 
     # どこまでツイートしたか復元
     ord_num = read_data(file_name)
@@ -113,102 +136,117 @@ def tweet_order(file_name, mode="loop"):
 
 # リプライへの返信
 def reply_mention(file_name):
-    # リプライが1個以上なら返信パターン作成開始
-    if len(get_mention) != 0:
+    # リプライが1個以上なら返信作成開始
+    if len(mention_tl) != 0:
             
         # パターンファイル展開
-        data_path = os.path.join(os.path.dirname(__file__), str(file_name))
-        with open(data_path, "r", encoding="utf-8") as f:
-            reply_pattern = json.load(f)
+        reply_pattern = read_pattern(mode="json", pattern_file_name=file_name)
+
+        # 最後に返信したIDの復元
+        last_id = read_data("mention_tl")
 
         # パターンと照合
-        for i in get_mention:
-            for j in reply_pattern:
-                result = re.search(j, repr(re.escape(i["text"])))
-
-                # 合致するパターンを見つけるかパターンファイルの最後までループ
-                if result is None:
-                    pass
-
-                else:
-                    # 一致した場合ツイート生成
-                    text = random.choice(reply_pattern[j])
-
-                    # リプライを返さないパターンの判別
-                    if text != config.END_PATTERN:
-                        # リプライに必要な情報収集
-                        tweet_id = i["id"]
-                        screen_name = i["user"]["screen_name"]
-
-                        # 文頭にScreen_Name付加および、文字列置換
-                        sc_text = ("@" + screen_name + " " + text)
-                        tweet = replace_string(sc_text, str(screen_name))
-
-                        # ポスト
-                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
-                        break
-                    else:
-                        # リプライに必要な情報収集
-                        break
-            else:
-                # 全パターン不一致時のツイート生成
-                    text = random.choice(reply_pattern["(?!.*)"])
-
-                    # リプライを返さないパターンの判別
-                    if text != config.END_PATTERN:
-                        # リプライに必要な情報収集
-                        tweet_id = i["id"]
-                        screen_name = i["user"]["screen_name"]
-
-                        # 文頭にScreen_Name付加および、文字列置換
-                        sc_text = ("@" + screen_name + " " + text)
-                        tweet = replace_string(sc_text, str(screen_name))
-
-                        # ポスト
-                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
-                    else:
-                        pass
-
-
-# TLへの反応リプライ
-def reply_home(file_name):
-    # リプライが1個以上なら返信パターン作成開始
-    if len(get_home) != 0:
-
-        # パターンファイル展開
-        data_path = os.path.join(os.path.dirname(__file__), str(file_name))
-        with open(data_path, "r", encoding="utf-8") as f:
-            reply_pattern = json.load(f)
-
-        # ツイートへの処理開始
-        for i in get_home:
-            # 自身のツイート及びRTを除外
-            if (i["user"]["screen_name"]).lower() == config.MY_ID.lower():
-                pass
+        for i in mention_tl:
             
-            elif re.search(r"RT @(.+)", repr(i["text"])) is None:
-                # パターンと照合
+            # 対象のツイートIDが最後に記録したIDより大きければ、処理開始
+            if i["id"] > last_id:
+
                 for j in reply_pattern:
                     result = re.search(j, repr(re.escape(i["text"])))
 
                     # 合致するパターンを見つけるかパターンファイルの最後までループ
                     if result is None:
                         pass
-                    
+
                     else:
                         # 一致した場合ツイート生成
                         text = random.choice(reply_pattern[j])
-                        # リプライに必要な情報収集
-                        tweet_id = i["id"]
-                        screen_name = i["user"]["screen_name"]
 
-                        # 文頭にScreen_Name付加および、文字列置換
-                        sc_text = ("@" + screen_name + " " + text)
-                        tweet = replace_string(sc_text, str(screen_name))
+                        # リプライを返さないパターンの判別
+                        if text != config.END_PATTERN:
+                            # リプライに必要な情報収集
+                            tweet_id = i["id"]
+                            screen_name = i["user"]["screen_name"]
 
-                        # ポスト
-                        t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
-                        break
+                            # 文頭にScreen_Name付加および、文字列置換
+                            sc_text = ("@" + screen_name + " " + text)
+                            tweet = replace_string(sc_text, str(screen_name))
+
+                            # ポスト
+                            t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                            break
+                        else:
+                            # リプライに必要な情報収集
+                            break
+                else:
+                    # 全パターン不一致時のツイート生成
+                        text = random.choice(reply_pattern["(?!.*)"])
+
+                        # リプライを返さないパターンの判別
+                        if text != config.END_PATTERN:
+                            # リプライに必要な情報収集
+                            tweet_id = i["id"]
+                            screen_name = i["user"]["screen_name"]
+
+                            # 文頭にScreen_Name付加および、文字列置換
+                            sc_text = ("@" + screen_name + " " + text)
+                            tweet = replace_string(sc_text, str(screen_name))
+
+                            # ポスト
+                            t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                        else:
+                            pass
+            
+            else:
+                break
+
+
+# TLへの反応リプライ
+def reply_home(file_name):
+    # リプライ対象が1個以上なら返信作成開始
+    if len(home_tl) != 0:
+        
+        # パターン読み込み
+        reply_pattern = read_pattern(mode="json", pattern_file_name=file_name)
+
+        # 最後に返信したIDの復元
+        last_id = read_data("home_tl")
+
+        # ツイートへの処理開始
+        for i in home_tl:
+            # 対象のツイートIDが最後に記録したIDより大きければ、処理開始
+            if i["id"] > last_id:
+                # 自身のツイート及びRT、他ユーザーへのMentionを除外
+                if (i["user"]["screen_name"]).lower() == config.MY_ID.lower():
+                    pass
+                
+                elif re.search(r"RT @(.+)|@\w+|＠\w+", repr(i["text"])) is None:
+                    # パターンと照合
+                    for j in reply_pattern:
+                        result = re.search(j, repr(re.escape(i["text"])))
+
+                        # 合致するパターンを見つけるかパターンファイルの最後までループ
+                        if result is None:
+                            pass
+                        
+                        else:
+                            # 一致した場合ツイート生成
+                            text = random.choice(reply_pattern[j])
+                            # リプライに必要な情報収集
+                            tweet_id = i["id"]
+                            screen_name = i["user"]["screen_name"]
+
+                            # 文頭にScreen_Name付加および、文字列置換
+                            sc_text = ("@" + screen_name + " " + text)
+                            tweet = replace_string(sc_text, str(screen_name))
+
+                            # ポスト
+                            t.statuses.update(status=tweet,in_reply_to_status_id=tweet_id)
+                            break
+
+                else:
+                    pass
 
             else:
-                pass
+                break
+

@@ -2,6 +2,7 @@ import pybotter
 import datetime
 
 ##################
+pybotter.fetch_timelines()
 dt_now = datetime.datetime.now()
 mont = dt_now.month
 date = dt_now.day
@@ -23,3 +24,7 @@ minu = dt_now.minute
 # TLに反応リプ
 #pybotter.reply_home("rep_home.json")
 
+
+##################
+pybotter.write_last_ids()
+##################
