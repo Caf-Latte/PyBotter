@@ -3,7 +3,6 @@ import glob
 import json
 import os
 import re
-from pprint import pprint
 import twitter
 import config
 
