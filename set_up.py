@@ -2,9 +2,10 @@ import datetime
 import glob
 import json
 import os
+import re
+from pprint import pprint
 import twitter
 import config
-
 
 # 認証の情報
 t = twitter.Twitter(auth=config.APIKEY)
@@ -13,17 +14,15 @@ t = twitter.Twitter(auth=config.APIKEY)
 # データ初期化
 data_dict = {"home_tl": 0, "mention_tl": 0}
 
-
-# 実行中のファイルのあるディレクトリを取得
-file_dir = os.path.dirname(__file__)
-
+# エラーメッセージ格納用のリスト
+warning_list = []
 
 ### 開始メッセージ ###
 print("セットアップを開始します。")
 
 
 ### rnd_*.txt関係のセットアップ ###
-# 同ディレクトリ内のord_*.txtの条件に当てはまるファイルのリストを作成
+# 同ディレクトリ内のrnd_*.txtの条件に当てはまるファイルのリストを作成
 rnd_data_list = [os.path.basename(p) for p in glob.glob(os.path.dirname(__file__) + os.sep + "rnd_*.txt") if os.path.isfile(p)]
 
 # rnd_*.txtじゃないものが0じゃないなら
@@ -52,7 +51,7 @@ if len(rnd_data_list) != 0:
         # 文字数チェック
         for j in text_list:
             if len(j) >= 141:
-                print(str(j) + "\nが141字以上の可能性があります。")
+                warning_list.append(str(i) + "の「 " + str(j) + " 」\nが141字以上の可能性があります。")
         else:
             print(str(i) + " のチェック完了。")
     
@@ -104,7 +103,7 @@ if len(ord_data_list) != 0:
                     # 文字数チェック
                     for j in text_list:
                         if len(j) >= 141:
-                            print(str(j) + "\nが141字以上の可能性があります。")
+                            warning_list.append(str(i) + "の「 " + str(j) + " 」\nが141字以上の可能性があります。")
                     
                     break
 
@@ -122,7 +121,7 @@ if len(ord_data_list) != 0:
 # 同ディレクトリ内のrep_*.jsonの条件に当てはまるファイルのリストを作成
 rep_data_list = [os.path.basename(p) for p in glob.glob(os.path.dirname(__file__) + os.sep + "rep_*.json") if os.path.isfile(p)]
 
-# rnd_*.txtじゃないものが0じゃないなら
+# rep_*.jsonじゃないものが0じゃないなら
 if len(rep_data_list) != 0: 
     # セットアップ開始のメッセージ
     print("\n\n*-*-*-*-*-*-*-*-*-*-*")
@@ -147,9 +146,14 @@ if len(rep_data_list) != 0:
 
         # 文字数チェック
         for j in text_dic:
+            try:
+                test_pattern = re.compile(repr(j))
+            except re.error:
+                warning_list.append(str(i) + "の「 " + str(j) + "  」\nは正規表現の記法に不備がある可能性があります。データを確認してからもう一度セットアップを開始してください。")
+
             for k in text_dic[j]:
                 if len(k) >= 124:
-                    print(str(k) + "\nが124字以上の可能性があります。\nさらに、{{screen_name}}が含まれる場合は相手のIDの長さによっては送信できない場合があります。")
+                    warning_list.append(str(i) + "の「 " + str(k) + " 」\nが124字以上の可能性があります。\nさらに、{{screen_name}}が含まれる場合は相手のIDの長さによっては送信できない場合があります。")
         else:
             print(str(i) + " のチェック完了。")
     
@@ -184,9 +188,18 @@ with open(data_path, "w", encoding="utf-8") as f:
 print("全データ記録完了。")
 
 
+
+
+
 ### 終了メッセージ  ###
 dt_now = datetime.datetime.now()
 print("\n\n*-*-*-*-*-*-*-*-*-*-*")
 print("==全セットアップ終了==")
+
+if len(warning_list) != 0 :
+    with open (os.path.dirname(__file__) + os.sep + "warning_log.txt", "w", encoding="utf-8") as f:
+        f.write("\n\n".join(warning_list))
+    print("-*-警告を warning_log.txt に出力しました。-*-")
+
 print(str(dt_now + datetime.timedelta(minutes=1)) + "以降に起動して下さい")
 input("何かキーを押して終了")
